@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "deploy": "npm run build && bash deploy.sh",
+    "push": "git add -A && (git diff --cached --quiet || git commit -m \"Update project\") && git push",
     "build:analyze": "vite build --mode analyze",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

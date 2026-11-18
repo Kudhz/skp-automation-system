@@ -94,6 +94,9 @@ npm run preview
 
 # Lint code
 npm run lint
+
+# Commit local changes and push to GitHub
+npm run push
 ```
 
 ## Project Structure
