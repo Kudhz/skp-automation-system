@@ -69,62 +69,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => curl_error($ch7)]);
     } else {
-        // On success: attempt logout on remote site using stored cookies
-        $logout_response = null;
-        $logout_error = null;
-        $logout_http_code = null;
-        $logout_url = 'https://e-kinerja.kemenhub.go.id/logout';
-        $chLogout = curl_init($logout_url);
-        $logoutHeaders = [
-            "Host: e-kinerja.kemenhub.go.id",
-            "Cookie: $cookie",
-            "User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0",
-            "Accept: */*",
-            "X-Requested-With: XMLHttpRequest",
-            "Referer: https://e-kinerja.kemenhub.go.id/",
-        ];
-        curl_setopt_array($chLogout, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => $logoutHeaders,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => 5,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => false,
-            CURLOPT_TIMEOUT => 15,
-        ]);
-        $logout_response = curl_exec($chLogout);
-        if (curl_errno($chLogout)) {
-            $logout_error = curl_error($chLogout);
-        }
-        $logout_http_code = curl_getinfo($chLogout, CURLINFO_HTTP_CODE);
-        curl_close($chLogout);
-
-        unset(
-            $_SESSION['allCookies'],
-            $_SESSION['ekin_cookie_jar'],
-            $_SESSION['csrf_token'],
-            $_SESSION['ekin_username'],
-            $_SESSION['id_skp'],
-            $_SESSION['bulan'],
-            $_SESSION['mapping_id_penilaiaan'],
-            $_SESSION['mapping_id_penilaiaan1'],
-            $_SESSION['mapping_tupoksi'],
-            $_SESSION['mapping_rhk'],
-            $_SESSION['mapping_bukti_dukung'],
-            $_SESSION['jumlahUnikIndikatorKinerja']
-        );
-
         http_response_code(200);
         // return remote responses plus the payload we sent for debugging
         header('Content-Type: application/json');
         echo json_encode([
             'status' => 'success',
             'sent_payload' => $renaksi,
-            'remote_response' => $response7,
-            'logout_response' => $logout_response,
-            'logout_error' => $logout_error,
-            'logout_http_code' => $logout_http_code,
-            'session' => 'ekin_logged_out'
+            'remote_response' => $response7
         ]);
     }
 

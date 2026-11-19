@@ -19,7 +19,11 @@ function curl_setopt($handle, $option, $value) {
     if ($option === CURLOPT_COOKIELIST) $handle->cookies[] = $value;
     return true;
 }
+function curl_setopt_array($handle, $options) { return true; }
 function curl_exec($handle) {
+    if ($handle->url === 'https://e-kinerja.kemenhub.go.id/skp/renaksi/pengajuan') {
+        return '{"status":true}';
+    }
     if ($handle->url !== 'https://e-kinerja.kemenhub.go.id/skp/renaksi/123') {
         return false;
     }
@@ -83,6 +87,8 @@ if ($path === '/setup') {
     ]);
 } elseif ($path === '/get_mapping.php') {
     require __DIR__ . '/../public/get_mapping.php';
+} elseif ($path === '/ajukan.php') {
+    require __DIR__ . '/../public/ajukan.php';
 } else {
     http_response_code(404);
 }

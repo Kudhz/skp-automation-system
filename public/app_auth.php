@@ -244,6 +244,7 @@ function logoutBotEkinSession()
         $_SESSION['allCookies'],
         $_SESSION['ekin_cookie_jar'],
         $_SESSION['csrf_token'],
+        $_SESSION['ekin_xsrf_token'],
         $_SESSION['ekin_username'],
         $_SESSION['id_skp'],
         $_SESSION['mapping_pending'],

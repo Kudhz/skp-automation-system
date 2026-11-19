@@ -7,8 +7,9 @@ import PreviewComponent from "./components/Preview";
 import WorkflowDashboard from "./components/WorkflowDashboard";
 import AccountSelector from "./components/AccountSelector";
 import { dataUser, showMessage } from "./data/userData";
-import { API_ENDPOINTS } from "./config/api";
+import { API_CREDENTIALS, API_ENDPOINTS } from "./config/api";
 import { clearUserMappingCache } from "./services/mappingService";
+import { summarizeIsiResult } from "./utils/isiResult";
 import "./styles.css";
 
 const SESSION_DURATION = 120;
@@ -75,7 +76,7 @@ const App = () => {
 
   // Clear message after some time
   useEffect(() => {
-    if (message) {
+    if (message && !message.persistent) {
       const timer = setTimeout(() => {
         setMessage(null);
       }, 6000);
@@ -142,6 +143,7 @@ const App = () => {
 
       const response = await fetch(API_ENDPOINTS.TAMBAH_RENAKSI, {
         method: "POST",
+        credentials: API_CREDENTIALS,
         headers: {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         },
@@ -185,6 +187,7 @@ const App = () => {
     try {
       const response = await fetch(API_ENDPOINTS.ISI_RENAKSI, {
         method: "POST",
+        credentials: API_CREDENTIALS,
         body: payload, // FormData object
       });
 
@@ -196,30 +199,29 @@ const App = () => {
         throw new Error("Respons server tidak valid. Silakan coba lagi.");
       }
 
-      const isSuccess =
-        response.ok &&
-        (result?.success === true ||
-          String(result?.status || "").toLowerCase() === "success");
-
-      if (isSuccess) {
-        setMessage({ text: "Rencana Aksi Berhasil di Isi", type: "success" });
-        showMessage("Rencana Aksi Berhasil di Isi", "success");
-        refreshUserMapping(formData.user);
-      } else {
-        const msg =
-          result?.message || `Gagal mengirim data (HTTP ${response.status}).`;
-        setMessage({ text: msg, type: "danger" });
-        showMessage(msg, "danger", 8000);
-      }
+      const plans = JSON.parse(payload.get("rhk"));
+      if (!Array.isArray(plans)) throw new Error("Data RHK tidak valid.");
+      const summary = summarizeIsiResult(result, plans.length, response.ok);
+      const text = summary.success
+        ? "Rencana Aksi Berhasil di Isi"
+        : "Rencana aksi belum seluruhnya berhasil disimpan.";
+      setMessage({
+        text,
+        type: summary.success ? "success" : "danger",
+        summary,
+        persistent: true,
+      });
+      showMessage(text, summary.success ? "success" : "danger", 8000);
     } catch (error) {
       console.error("Error submitting isi:", error);
-      let msg = "Gagal mengirim data!";
+      let msg = error.message || "Gagal mengirim data!";
       if (error.name === "TypeError" && error.message.includes("fetch")) {
-        msg += " (network error)";
+        msg = "Gagal mengirim data! (network error)";
       }
       setMessage({ text: msg, type: "danger" });
       showMessage(msg, "danger", 8000);
     } finally {
+      refreshUserMapping(payload.get("username"));
       setIsLoading(false);
     }
   };
@@ -232,6 +234,7 @@ const App = () => {
 
       const response = await fetch(API_ENDPOINTS.AJUKAN_RENAKSI, {
         method: "POST",
+        credentials: API_CREDENTIALS,
         headers: {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         },
@@ -313,6 +316,15 @@ const App = () => {
   };
 
   const handleLogout = () => {
+    clearUserMappingCache();
+    if (API_ENDPOINTS.LOGOUT) {
+      fetch(API_ENDPOINTS.LOGOUT, {
+        method: "POST",
+        credentials: API_CREDENTIALS,
+      }).catch((error) => {
+        console.error("Gagal mengakhiri sesi API Node:", error);
+      });
+    }
     clearStoredSession();
     setAccountSelectorState({ query: "", unitFilter: "", categoryFilter: "", open: true });
     setIsAuthenticated(false);

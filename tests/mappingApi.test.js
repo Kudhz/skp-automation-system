@@ -71,6 +71,20 @@ test("tahapan PHP mengikat ID dan sesi sebelum mengizinkan operasi", async (t) =
   assert.equal((await post({ ...body, stage: "complete" })).status, 200);
   assert.equal((await guard()).status, 200);
   assert.equal((await post({ ...body, stage: "complete" })).status, 409);
+  assert.equal((await post({ stage: "refresh", username: "second" })).status, 409);
+  const refresh = await post({ stage: "refresh", username: "first", id_skp: "124" });
+  assert.equal(refresh.status, 200);
+  assert.match((await refresh.json()).raw_response, /penilaiaan_indikator/);
+  assert.equal((await guard()).status, 200);
+  const submit = await fetch(`${base}/ajukan.php`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie },
+    body: new URLSearchParams({ username: "first", tupoksi: "[123]" }),
+  });
+  assert.equal(submit.status, 200);
+  assert.equal((await submit.json()).status, "success");
+  assert.equal((await guard()).status, 200);
+  assert.equal((await post({ stage: "refresh", username: "first" })).status, 200);
 
   const secondSetup = await fetch(`${base}/setup?cookiejar=1`);
   const secondCookie = secondSetup.headers.get("set-cookie").split(";")[0];

@@ -6,6 +6,18 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Content-Type');
 $url = "https://e-kinerja.kemenhub.go.id/skp/renaksi/editdetailitem";
 
+function ekinSaveResponseSucceeded($httpCode, $body, $error)
+{
+    $decoded = is_string($body) ? json_decode($body, true) : null;
+    return !$error && $httpCode >= 200 && $httpCode < 300 &&
+        is_array($decoded) && isset($decoded['status']) && $decoded['status'] === true;
+}
+
+function ekinHandleKey($handle)
+{
+    return is_object($handle) ? spl_object_id($handle) : (int)$handle;
+}
+
 // Get data from the HTML form (assuming you've already processed it)
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $session = requireBotEkinSession($_POST['username'] ?? '');
@@ -14,10 +26,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $key = "renaksi";
     $realisasi = "realisasi";
     $bukti = "bukti_dukung";
-    $values = isset($_POST["rhk"]) ? json_decode($_POST["rhk"], true) : [];
+    $values = isset($_POST["rhk"]) ? json_decode($_POST["rhk"], true) : null;
+    if (!is_array($values) || array_values($values) !== $values || count($values) === 0 || count($values) > 500) {
+        botJsonResponse(400, ['success' => false, 'message' => 'Data RHK tidak valid.']);
+        exit;
+    }
+    foreach ($values as $value) {
+        if (!is_string($value)) {
+            botJsonResponse(400, ['success' => false, 'message' => 'Data RHK tidak valid.']);
+            exit;
+        }
+    }
     $totalValues = count($values);
-    $jumlahLRhk1 = $_POST["jumlahUnikIndikatorKinerja"];
-    $loopId = $jumlahLRhk1;
+    $loopId = $totalValues;
     $realValue = array ("1 Document", "100 Persen", "1 Bulan");
     $realIndex = 0;
     $drive = $_POST["bukti_dukung"];
@@ -60,6 +81,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // Fallback: explode dengan koma jika bukan JSON
             $id = explode(',', $rawIdIndikator);
             error_log("📥 Exploded by comma: " . implode(', ', $id));
+        }
+
+        if (count($id) !== $loopId) {
+            botJsonResponse(400, ['success' => false, 'message' => 'Jumlah RHK dan ID indikator harus sama dan tidak boleh kosong.']);
+            exit;
+        }
+        foreach ($id as $indicatorId) {
+            if ((!is_string($indicatorId) && !is_int($indicatorId) && !is_float($indicatorId)) || trim((string)$indicatorId) === '') {
+                botJsonResponse(400, ['success' => false, 'message' => 'Jumlah RHK dan ID indikator harus sama dan tidak boleh kosong.']);
+                exit;
+            }
         }
     }
     
@@ -112,8 +144,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
             curl_multi_add_handle($mh, $ch);
+            $handleMap[ekinHandleKey($ch)] = ['index' => count($handles), 'payload' => $ps];
             $handles[] = $ch;
-            $handleMap[(int)$ch] = $ps;
         }
     }
 
@@ -126,28 +158,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     } while ($running && $mrc == CURLM_OK);
 
     // Collect responses and errors, and collect payloads that need retry
-    $errors = [];
     $responses = [];
     $retryPayloads = [];
     foreach ($handles as $ch) {
         $content = curl_multi_getcontent($ch);
         $err = curl_error($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $ps = isset($handleMap[(int)$ch]) ? $handleMap[(int)$ch] : null;
-        $responses[] = ['http_code' => $httpCode, 'body' => $content, 'payload' => $ps];
-        // consider retry on curl error or HTTP 5xx or empty/invalid body
-        if ($err) {
-            $errors[] = $err;
-            if ($ps !== null) $retryPayloads[] = $ps;
-        } elseif ($httpCode >= 500 || $httpCode === 0) {
-            if ($ps !== null) $retryPayloads[] = $ps;
-        }
+        $item = $handleMap[ekinHandleKey($ch)];
+        $success = ekinSaveResponseSucceeded($httpCode, $content, $err);
+        $responses[$item['index']] = ['http_code' => $httpCode, 'body' => $content, 'payload' => $item['payload'], 'err' => $err, 'success' => $success];
+        if (!$success && ($err || $httpCode >= 500 || $httpCode === 0)) $retryPayloads[] = $item;
         curl_multi_remove_handle($mh, $ch);
         curl_close($ch);
     }
     curl_multi_close($mh);
     // Retry failed payloads with exponential backoff
-    $maxRetries = 2; // additional attempts
+    $maxRetries = 5; // additional attempts
+    $finalResults = $responses;
+    $retriedCount = count($retryPayloads);
     $retryResults = [];
     $attempt = 0;
     while (!empty($retryPayloads) && $attempt < $maxRetries) {
@@ -159,7 +187,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $mh2 = curl_multi_init();
         $handles2 = [];
         $handleMap2 = [];
-        foreach ($retryPayloads as $ps) {
+        foreach ($retryPayloads as $item) {
+            $ps = $item['payload'];
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -171,7 +200,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
             curl_multi_add_handle($mh2, $ch);
             $handles2[] = $ch;
-            $handleMap2[(int)$ch] = $ps;
+            $handleMap2[ekinHandleKey($ch)] = $item;
         }
 
         // exec
@@ -187,11 +216,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $content = curl_multi_getcontent($ch);
             $err = curl_error($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $ps = isset($handleMap2[(int)$ch]) ? $handleMap2[(int)$ch] : null;
-            $retryResults[] = ['attempt' => $attempt, 'http_code' => $httpCode, 'err' => $err, 'payload' => $ps, 'body' => $content];
-            if ($err || $httpCode >= 500 || $httpCode === 0) {
-                if ($ps !== null) $newRetry[] = $ps;
-            }
+            $item = $handleMap2[ekinHandleKey($ch)];
+            $success = ekinSaveResponseSucceeded($httpCode, $content, $err);
+            $retryResults[] = ['attempt' => $attempt, 'http_code' => $httpCode, 'err' => $err, 'payload' => $item['payload'], 'body' => $content, 'success' => $success];
+            $finalResults[$item['index']] = ['http_code' => $httpCode, 'body' => $content, 'payload' => $item['payload'], 'err' => $err, 'success' => $success];
+            if (!$success && ($err || $httpCode >= 500 || $httpCode === 0)) $newRetry[] = $item;
             curl_multi_remove_handle($mh2, $ch);
             curl_close($ch);
         }
@@ -199,36 +228,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $retryPayloads = $newRetry;
     }
 
-    $suksesCount = 0;
-foreach ($responses as $resp) {
-    // Cek jika body response adalah JSON dan ada status true
-    $body = $resp['body'];
-    $json = json_decode($body, true);
-    if (is_array($json) && isset($json['status']) && $json['status'] === true) {
-        $suksesCount++;
-    }
-}
-
-if (!empty($errors) || !empty($retryPayloads)) {
-    http_response_code(207); // multi-status-ish
-    echo json_encode([
-        'status' => 'partial',
-        'initial_responses' => $responses,
-        'retry_summary' => $retryResults,
-        'final_failures' => $retryPayloads,
-        'success_count' => $suksesCount // <-- jumlah sukses
-        
-    ]);
-} else {
-    http_response_code(200);
-    echo json_encode([
-        'status' => 'success',
+    $initialSuccessCount = count(array_filter($responses, function ($response) { return $response['success']; }));
+    $successCount = count(array_filter($finalResults, function ($response) { return $response['success']; }));
+    $retrySuccessCount = $successCount - $initialSuccessCount;
+    $expectedCount = $totalValues * 3;
+    $allSucceeded = $successCount === $expectedCount;
+    botJsonResponse($allSucceeded ? 200 : 207, [
+        'status' => $allSucceeded ? 'success' : 'partial',
         'count' => count($responses),
-        'success_count' => $suksesCount, // <-- jumlah sukses
-        //'responses' => $responses,
+        'expected_count' => $expectedCount,
+        'initial_success_count' => $initialSuccessCount,
+        'success_count' => $successCount,
+        'retry_success_count' => $retrySuccessCount,
+        'retry_failure_count' => $retriedCount - $retrySuccessCount,
         'retries' => count($retryResults),
-        'final_success' => (count($retryResults) + $suksesCount)
+        'retry_summary' => $retryResults,
+        'final_failures' => array_values(array_filter($finalResults, function ($response) { return !$response['success']; })),
+        'final_success' => $successCount,
     ]);
-}
     
 }

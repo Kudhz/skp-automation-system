@@ -19,6 +19,18 @@ function pageObjectSource($page, $name)
     return preg_match($pattern, $page, $match) ? $match[0] : '';
 }
 
+function renaksiSource($page)
+{
+    $source = '';
+    foreach (['penilaiaan', 'penilaiaan_indikator', 'rkh_indikator'] as $name) {
+        $source .= pageArraySource($page, $name) . "\n";
+    }
+    foreach (['skp', 'pegawai'] as $name) {
+        $source .= pageObjectSource($page, $name) . "\n";
+    }
+    return $source;
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     botJsonResponse(405, ['success' => false, 'message' => 'Metode tidak diizinkan.']);
     exit;
@@ -76,6 +88,7 @@ if ($stage === 'login') {
     $_SESSION['allCookies'] = implode('; ', $loginResult['setCookies']);
     $_SESSION['ekin_cookie_jar'] = $loginResult['cookieJar'];
     $_SESSION['csrf_token'] = $loginResult['csrf_token'];
+    $_SESSION['ekin_xsrf_token'] = $loginResult['xsrfToken'];
     $_SESSION['ekin_username'] = $username;
     $page = $loginResult['skp_page'];
     $source = is_string($page) ? pageArraySource($page, 'dataList') : '';
@@ -98,6 +111,22 @@ if ($stage === 'login') {
         'current_date' => $today->format('Y-m-d'),
         'nonce' => $nonce,
     ]);
+    exit;
+}
+
+if ($stage === 'refresh') {
+    $session = requireBotEkinSession($username);
+    $cookieJar = $_SESSION['ekin_cookie_jar'] ?? null;
+    $page = getRenaksiPage($session['allCookies'], $_SESSION['ekin_xsrf_token'] ?? '', $_SESSION['id_skp'], $cookieJar);
+    if (is_array($cookieJar)) {
+        $_SESSION['ekin_cookie_jar'] = $cookieJar;
+        $_SESSION['allCookies'] = implode('; ', botCookieHeaderValues($cookieJar, '/skp/renaksi/'));
+    }
+    if (!is_string($page) || $page === '') {
+        botJsonResponse(502, ['success' => false, 'message' => 'Gagal mengambil halaman rencana aksi.']);
+        exit;
+    }
+    botJsonResponse(200, ['success' => true, 'raw_response' => renaksiSource($page)]);
     exit;
 }
 
@@ -136,15 +165,8 @@ if ($stage === 'renaksi') {
         botJsonResponse(502, ['success' => false, 'message' => 'Gagal mengambil halaman rencana aksi.']);
         exit;
     }
-    $source = '';
-    foreach (['penilaiaan', 'penilaiaan_indikator', 'rkh_indikator'] as $name) {
-        $source .= pageArraySource($page, $name) . "\n";
-    }
-    foreach (['skp', 'pegawai'] as $name) {
-        $source .= pageObjectSource($page, $name) . "\n";
-    }
     $_SESSION['mapping_pending']['id_skp'] = $id;
-    botJsonResponse(200, ['success' => true, 'raw_response' => $source]);
+    botJsonResponse(200, ['success' => true, 'raw_response' => renaksiSource($page)]);
     exit;
 }
 

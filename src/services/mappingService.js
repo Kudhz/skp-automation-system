@@ -1,16 +1,19 @@
-import { API_ENDPOINTS } from "../config/api.js";
+import { API_CREDENTIALS, API_ENDPOINTS } from "../config/api.js";
 import { getActiveSkp, validateRenaksiPage } from "../utils/skpPage.js";
 
 const CACHE_DURATION = 60 * 1000;
 const mappingCache = new Map();
 const mappingRequests = new Map();
-let activeMappingKey = "";
+const pendingMappings = new Set();
+let activeMapping = null;
+let sessionGeneration = 0;
 let mappingQueue = Promise.resolve();
 let latestRequestedKey = "";
 
 async function requestMapping(body) {
   const response = await fetch(API_ENDPOINTS.GET_MAPPING, {
     method: "POST",
+    credentials: API_CREDENTIALS,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -32,20 +35,42 @@ async function requestMapping(body) {
 export async function fetchUserMapping({ unit, category, username }) {
   const cacheKey = `${unit}\u0000${category}\u0000${username}`;
   const pendingRequest = mappingRequests.get(cacheKey);
-  if (pendingRequest && latestRequestedKey === cacheKey) return pendingRequest;
+  if (pendingRequest && !pendingRequest.invalidated && latestRequestedKey === cacheKey) {
+    return pendingRequest.promise;
+  }
   latestRequestedKey = cacheKey;
 
+  const requestEntry = { username, invalidated: false, generation: sessionGeneration, promise: null };
   const request = mappingQueue.then(async () => {
     const cached = mappingCache.get(cacheKey);
     if (
+      !requestEntry.invalidated &&
       cached &&
       cached.expiresAt > Date.now() &&
-      activeMappingKey === cacheKey
+      activeMapping?.key === cacheKey
     ) {
       return cached.result;
     }
 
-    activeMappingKey = "";
+    if (activeMapping?.key === cacheKey) {
+      const previousMapping = activeMapping.result;
+      const page = await requestMapping({ stage: "refresh", username });
+      validateRenaksiPage(page.raw_response);
+      const result = { ...previousMapping, raw_response: page.raw_response };
+      if (requestEntry.generation === sessionGeneration) {
+        activeMapping = { key: cacheKey, result };
+      }
+      if (!requestEntry.invalidated) {
+        mappingCache.set(cacheKey, {
+          expiresAt: Date.now() + CACHE_DURATION,
+          result,
+          username,
+        });
+      }
+      return result;
+    }
+
+    activeMapping = null;
     const login = await requestMapping({ stage: "login", unit, category, username });
     if (!Number.isInteger(login.year) || typeof login.nonce !== "string" || !login.nonce ||
         typeof login.current_date !== "string" || Number(login.current_date.slice(0, 4)) !== login.year) {
@@ -69,22 +94,29 @@ export async function fetchUserMapping({ unit, category, username }) {
       period: { startDate, endDate },
     };
 
-    mappingCache.set(cacheKey, {
-      expiresAt: Date.now() + CACHE_DURATION,
-      result,
-      username,
-    });
-    activeMappingKey = cacheKey;
+    if (requestEntry.generation === sessionGeneration) {
+      activeMapping = { key: cacheKey, result };
+    }
+    if (!requestEntry.invalidated) {
+      mappingCache.set(cacheKey, {
+        expiresAt: Date.now() + CACHE_DURATION,
+        result,
+        username,
+      });
+    }
     return result;
   });
 
-  mappingRequests.set(cacheKey, request);
+  requestEntry.promise = request;
+  mappingRequests.set(cacheKey, requestEntry);
+  pendingMappings.add(requestEntry);
   mappingQueue = request.then(
     () => undefined,
     () => undefined,
   );
   const clearPendingRequest = () => {
-    if (mappingRequests.get(cacheKey) === request) {
+    pendingMappings.delete(requestEntry);
+    if (mappingRequests.get(cacheKey) === requestEntry) {
       mappingRequests.delete(cacheKey);
     }
   };
@@ -93,10 +125,18 @@ export async function fetchUserMapping({ unit, category, username }) {
 }
 
 export function clearUserMappingCache(username) {
+  if (!username) {
+    sessionGeneration += 1;
+    activeMapping = null;
+  }
+  for (const entry of pendingMappings) {
+    if (!username || entry.username === username) {
+      entry.invalidated = true;
+    }
+  }
   for (const [key, entry] of mappingCache) {
     if (!username || entry.username === username) {
       mappingCache.delete(key);
-      if (activeMappingKey === key) activeMappingKey = "";
     }
   }
 }

@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { getActiveSkp, getSkpDetails, getSkpMonthNumbers, validateRenaksiPage } from "../src/utils/skpPage.js";
 import { clearUserMappingCache, fetchUserMapping } from "../src/services/mappingService.js";
+import { getMonthIndicatorMappings } from "../src/utils/monthOptions.js";
 
 const skp = (entries) => `var dataList = ${JSON.stringify(entries)};`;
 const page = 'var penilaiaan = []; var penilaiaan_indikator = []; var rkh_indikator = [];';
@@ -46,6 +47,105 @@ test("detail SKP dibaca dari objek sumber dan harus sesuai akun yang aktif", () 
   assert.throws(() => getSkpDetails(source, "346"), /tidak sesuai/);
   assert.throws(() => getSkpDetails("var skp = {};", "345"), /pegawai/);
   assert.throws(() => getSkpDetails("var skp = {bad}; var pegawai = {};", "345"), SyntaxError);
+});
+
+test("invalidasi mapping yang sedang berjalan memuat status terbaru setelah simpan", async (t) => {
+    const originalFetch = globalThis.fetch;
+    t.after(() => {
+      globalThis.fetch = originalFetch;
+      clearUserMappingCache();
+    });
+    clearUserMappingCache();
+
+    let releaseOldPage;
+    let oldPageRequested;
+    const oldPageStarted = new Promise((resolve) => { oldPageRequested = resolve; });
+    const oldPageBlocked = new Promise((resolve) => { releaseOldPage = resolve; });
+    const calls = [];
+    let filled = false;
+    globalThis.fetch = async (_url, options) => {
+      const body = JSON.parse(options.body);
+      calls.push(body.stage);
+      let response;
+      if (body.stage === "login") {
+        response = {
+          success: true,
+          year: 2026,
+          current_date: "2026-08-01",
+          nonce: "nonce",
+          skp_source: skp([{ id: 345, tanggal_awal: "2026-01-01", tanggal_akhir: "2026-12-31" }]),
+        };
+      } else if (body.stage === "renaksi" || body.stage === "refresh") {
+        const currentValue = filled ? "100 Persen" : "0";
+        response = {
+          success: true,
+          raw_response: `var penilaiaan = [{"id":1,"bulan":8,"tahun":2026,"status":0}];` +
+            `var penilaiaan_indikator = [{"id":2,"id_penilaiaan":1,"id_indikator":3,"realisasi":"${currentValue}"}];` +
+            "var rkh_indikator = [];",
+        };
+        if (!filled) {
+          oldPageRequested();
+          await oldPageBlocked;
+        }
+      } else {
+        response = { success: true };
+      }
+      return { ok: true, status: 200, json: async () => response };
+    };
+    const account = { unit: "unit", category: "category", username: "operator" };
+    const oldRequest = fetchUserMapping(account);
+    await oldPageStarted;
+    filled = true;
+    clearUserMappingCache(account.username);
+    const refreshedRequest = fetchUserMapping(account);
+    const concurrentRefresh = fetchUserMapping(account);
+    releaseOldPage();
+
+    const [oldResult, refreshed, shared] = await Promise.all([
+      oldRequest,
+      refreshedRequest,
+      concurrentRefresh,
+    ]);
+    assert.notEqual(oldResult.raw_response, refreshed.raw_response);
+    assert.equal(refreshed.raw_response, shared.raw_response);
+    assert.deepEqual(calls, ["login", "renaksi", "complete", "refresh"]);
+
+    const assessments = [{ id: 1, bulan: 8, tahun: 2026, status: 0 }];
+    const getLabels = (result) => {
+      const match = result.raw_response.match(/var penilaiaan_indikator = (\[[\s\S]*?\]);/);
+      return Object.keys(getMonthIndicatorMappings(assessments, JSON.parse(match[1]), 2026).mappingBulanId);
+    };
+    assert.deepEqual(getLabels(oldResult), ["Agustus - Belum diisi"]);
+    assert.deepEqual(getLabels(refreshed), ["Agustus - Sudah diisi"]);
+    assert.equal((await fetchUserMapping(account)).raw_response, refreshed.raw_response);
+    assert.equal(calls.length, 4);
+});
+
+test("refresh gagal ditampilkan tanpa login ulang", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    clearUserMappingCache();
+  });
+  clearUserMappingCache();
+  const calls = [];
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push(body.stage);
+    const result = body.stage === "login"
+      ? { success: true, year: 2026, current_date: "2026-08-01", nonce: "nonce", skp_source: skp([{ id: 345, tanggal_awal: "2026-01-01", tanggal_akhir: "2026-12-31" }]) }
+      : body.stage === "renaksi"
+        ? { success: true, raw_response: page }
+        : body.stage === "refresh"
+          ? { success: false, message: "Sesi berakhir." }
+          : { success: true };
+    return { ok: result.success, status: result.success ? 200 : 409, json: async () => result };
+  };
+  const account = { unit: "unit", category: "category", username: "operator" };
+  await fetchUserMapping(account);
+  clearUserMappingCache(account.username);
+  await assert.rejects(fetchUserMapping(account), /Sesi berakhir/);
+  assert.deepEqual(calls, ["login", "renaksi", "complete", "refresh"]);
 });
 
 test("tahapan mapping berurutan, memakai cache, dan tidak menyelesaikan halaman rusak", async (t) => {

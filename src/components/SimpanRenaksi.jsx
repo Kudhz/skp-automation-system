@@ -82,11 +82,13 @@ const IsiComponent = ({
                   jsResult.mappingBulanIdIndikator[bulan];
 
                 let orderedIds = [];
+                let orderedPlans = [];
                 if (jsResult.mappingTupoksi && bulanIdIndikators) {
-                  jsResult.mappingTupoksi.forEach((idIndikator) => {
+                  jsResult.mappingTupoksi.forEach((idIndikator, planIndex) => {
                     const index = bulanIdIndikators.indexOf(idIndikator);
                     if (index !== -1 && bulanIds[index]) {
                       orderedIds.push(bulanIds[index]);
+                      orderedPlans.push(jsResult.renaksiBulanId[planIndex] || "");
                     }
                   });
                 }
@@ -95,6 +97,7 @@ const IsiComponent = ({
                   value: JSON.stringify(orderedIds),
                   label: bulan,
                   disabled: !canSelect,
+                  plans: orderedPlans,
                 });
               }
             }
@@ -168,13 +171,21 @@ const IsiComponent = ({
   const handleSubmit = (e) => {
     e.preventDefault();
 
+    const selectedOption = bulanOptions.find(
+      (option) => option.value === formData.bulan && !option.disabled,
+    );
+    if (!selectedOption?.plans?.length) {
+      setMappingError("Data RHK untuk bulan ini tidak tersedia. Muat ulang data pengguna.");
+      return;
+    }
+
     const payload = new FormData();
     payload.append(
       "jumlahUnikIndikatorKinerja",
-      formData.jumlahUnikIndikatorKinerja || "",
+      String(selectedOption.plans.length),
     );
     payload.append("bukti_dukung", formData.bukti_dukung || "");
-    payload.append("rhk", formData.rhk || "");
+    payload.append("rhk", JSON.stringify(selectedOption.plans));
     payload.append("username", formData.user);
     payload.append("id_indikator", formData.bulan);
 
@@ -420,8 +431,33 @@ const IsiComponent = ({
         {message && (
           <div
             className={`alert ${message.type === "success" ? "alert-success" : "alert-danger"} mt-3 text-center`}
+            role="status"
           >
-            {message.text}
+            <div>{message.text}</div>
+            {message.summary && (
+              <>
+                <div>
+                  Berhasil: {message.summary.successCount}/{message.summary.expected}
+                  {" "}(awal: {message.summary.initialSuccessCount}, retry: {message.summary.retrySuccessCount}).
+                </div>
+                <div>
+                  {message.summary.retryDetails.length
+                    ? `Retry: ${message.summary.retrySuccessCount} berhasil, ${message.summary.retryFailureCount} gagal.`
+                    : "Retry: tidak ada."}
+                </div>
+                {message.summary.retryDetails.length > 0 && (
+                  <ul className="mb-0 mt-2 text-start">
+                    {message.summary.retryDetails.map((retry, index) => (
+                      <li key={index}>
+                        ID {retry.id}, {retry.field}, percobaan {retry.attempt}:{" "}
+                        {retry.success ? "berhasil" : "gagal"}
+                        {retry.httpCode ? ` (HTTP ${retry.httpCode})` : ""}.
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>

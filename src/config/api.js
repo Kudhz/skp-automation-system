@@ -1,12 +1,37 @@
-// Konfigurasi API endpoints
-export const API_BASE_URL = "http://192.168.111.177:9597";
+const frontendEnvironment = import.meta.env || {};
 
-export const API_ENDPOINTS = {
-  GET_MAPPING: `/get_mapping.php`,
-  TAMBAH_RENAKSI: `/tambakrenaksi.php`,
-  ISI_RENAKSI: `/ekinprocess.php`,
-  AJUKAN_RENAKSI: `/ajukan.php`,
-};
+export function createApiConfig(environment = frontendEnvironment) {
+  const backend = (environment.VITE_API_BACKEND || "php").toLowerCase();
+  if (backend !== "php" && backend !== "node") {
+    throw new Error('VITE_API_BACKEND harus bernilai "php" atau "node".');
+  }
+
+  const baseUrl =
+    backend === "node"
+      ? (environment.VITE_NODE_API_BASE_URL || "/api").replace(/\/+$/, "")
+      : "";
+  const endpoint = (phpPath) =>
+    backend === "node"
+      ? `${baseUrl}/${phpPath.replace(/\.php$/i, "").replace(/^\/+/, "")}`
+      : `/${phpPath.replace(/^\/+/, "")}`;
+
+  return {
+    backend,
+    credentials: backend === "node" ? "include" : "same-origin",
+    endpoints: {
+      GET_MAPPING: endpoint("get_mapping.php"),
+      TAMBAH_RENAKSI: endpoint("tambakrenaksi.php"),
+      ISI_RENAKSI: endpoint("ekinprocess.php"),
+      AJUKAN_RENAKSI: endpoint("ajukan.php"),
+      LOGOUT: backend === "node" ? endpoint("logout") : null,
+    },
+  };
+}
+
+const apiConfig = createApiConfig();
+export const API_BACKEND = apiConfig.backend;
+export const API_CREDENTIALS = apiConfig.credentials;
+export const API_ENDPOINTS = apiConfig.endpoints;
 
 // Helper function untuk membuat URL endpoint
 export const getEndpoint = (endpoint) => {

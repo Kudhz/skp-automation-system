@@ -6,6 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "api": "node server/index.js",
+    "test": "node --test",
+    "test:node-api": "node --test tests/nodeApi.test.js",
     "build": "vite build",
     "deploy": "npm run build && bash deploy.sh",
     "push": "git add -A && (git diff --cached --quiet || git commit -m \"Update project\") && git push",
@@ -19,6 +22,9 @@
     "@popperjs/core": "^2.11.8",
     "bootstrap": "^5.3.8",
     "dotenv": "^17.2.2",
+    "express": "^5.3.0",
+    "express-session": "^1.19.0",
+    "multer": "^2.5.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
