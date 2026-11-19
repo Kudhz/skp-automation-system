@@ -43,8 +43,8 @@ function createFakeClient() {
   };
 }
 
-async function startTestServer(t, client = createFakeClient()) {
-  const app = createApiApp({ ekinClient: client, environment });
+async function startTestServer(t, client = createFakeClient(), serverEnvironment = environment) {
+  const app = createApiApp({ ekinClient: client, environment: serverEnvironment });
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
   t.after(() => new Promise((resolve) => server.close(resolve)));
@@ -71,8 +71,49 @@ async function startTestServer(t, client = createFakeClient()) {
     return response;
   };
   const get = (path) => fetch(`${base}${path}`);
-  return { request, get, client };
+  return { request, get, client, base };
 }
+
+test("wildcard CORS reflects arbitrary origins for credentialed requests", async (t) => {
+  const { base } = await startTestServer(t, createFakeClient(), {
+    ...environment,
+    NODE_API_CORS_ORIGINS: "*",
+  });
+  for (const origin of ["https://frontend.example", "https://other.example"]) {
+    const response = await fetch(`${base}/api/health`, { headers: { Origin: origin } });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("access-control-allow-origin"), origin);
+    assert.equal(response.headers.get("access-control-allow-credentials"), "true");
+    assert.match(response.headers.get("vary"), /Origin/i);
+  }
+  const preflight = await fetch(`${base}/api/get_mapping`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://frontend.example",
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type",
+    },
+  });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get("access-control-allow-origin"), "https://frontend.example");
+  assert.equal(preflight.headers.get("access-control-allow-credentials"), "true");
+});
+
+test("configured CORS allowlist still rejects other origins", async (t) => {
+  const { base } = await startTestServer(t, createFakeClient(), {
+    ...environment,
+    NODE_API_CORS_ORIGINS: "https://trusted.example",
+  });
+  const allowed = await fetch(`${base}/api/health`, {
+    headers: { Origin: "https://trusted.example" },
+  });
+  assert.equal(allowed.status, 200);
+  assert.equal(allowed.headers.get("access-control-allow-origin"), "https://trusted.example");
+  const denied = await fetch(`${base}/api/health`, {
+    headers: { Origin: "https://other.example" },
+  });
+  assert.equal(denied.status, 403);
+});
 
 test("resolves one server-side account password and rejects ambiguity", () => {
   assert.equal(

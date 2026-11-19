@@ -132,6 +132,8 @@ Vite proxies `/api` requests to `http://127.0.0.1:4001`. The Node API defaults t
 
 For production, route `/api/` to the Node API and serve the frontend from the configured origin. Set `NODE_API_CORS_ORIGINS` to the exact frontend origin(s), set a long random `SESSION_SECRET`, and enable secure cookies behind HTTPS (`COOKIE_SECURE=true`; set `TRUST_PROXY=true` when TLS terminates at a trusted reverse proxy). The default Express in-memory session store is intended for testing or a single Node process; use a persistent shared session store before running multiple instances or relying on sessions across restarts.
 
+Setting `NODE_API_CORS_ORIGINS=*` allows every origin. The API reflects the request origin instead of returning a literal `*` so credentialed browser requests can work. This is unsafe: untrusted sites may be able to access the API using a user's session. Prefer an explicit origin allowlist.
+
 Node mode can also use a separate API origin by setting `VITE_NODE_API_BASE_URL` to that origin's `/api` base URL and adding the frontend origin to `NODE_API_CORS_ORIGINS`. The frontend sends credentials only when Node mode is selected.
 
 For Isi Rencana Aksi, the selected month's RHK entries each produce three parallel requests. Both backends report success only when all `RHK × 3` requests receive an HTTP 2xx response with JSON `status: true`. Network errors and HTTP 5xx responses are retried up to five times after the initial attempt; other failures are reported without automatic retry. The result shows the final success count and each retry attempt. A successful response confirms the remote API response, not an independent read-back of the saved data.

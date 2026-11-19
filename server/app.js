@@ -160,10 +160,10 @@ function createCorsMiddleware(environment) {
 
   return (req, res, next) => {
     const origin = req.get("Origin");
-    if (origin && allowedOrigins.has(origin)) {
+    res.vary("Origin");
+    if (origin && (allowedOrigins.has("*") || allowedOrigins.has(origin))) {
       res.set("Access-Control-Allow-Origin", origin);
       res.set("Access-Control-Allow-Credentials", "true");
-      res.set("Vary", "Origin");
       res.set("Access-Control-Allow-Headers", "Content-Type");
       res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     } else if (origin) {
