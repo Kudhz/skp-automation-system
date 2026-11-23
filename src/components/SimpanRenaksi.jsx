@@ -1,3 +1,4 @@
+import ActionPage from "./ActionPage";
 import React, { useEffect, useRef, useState } from "react";
 import { fetchUserMapping } from "../services/mappingService";
 import MonthSelector from "./MonthSelector";
@@ -12,7 +13,6 @@ const IsiComponent = ({
   message,
   onIdentityChange,
   mappingRevision,
-  accountSelector,
 }) => {
   const [bulanOptions, setBulanOptions] = useState([]);
   const [monthNumbers, setMonthNumbers] = useState(null);
@@ -358,111 +358,43 @@ const IsiComponent = ({
     }
   };
 
+  const monthLabel = formData.bulan
+    ? (bulanOptions.find((option) => String(option.value) === String(formData.bulan))?.label || "").split(" - ")[0]
+    : "";
+
   return (
-    <div id="form-isi" style={{ width: "100%" }}>
-      <div style={{ width: "100%", margin: "0 auto" }}>
-        <div className="form-page-heading">
-          <h2>
-            <strong>Isi Rencana Aksi</strong>
-          </h2>
-          <p>
-            Pastikan rencana aksi telah ditambahkan sebelum mengisi
-          </p>
-        </div>
-
-        {accountSelector}
-
-        <div className="mb-4">
-          <form onSubmit={handleSubmit} autoComplete="off">
-            <input
-              type="hidden"
-              value={formData.jumlahUnikIndikatorKinerja || ""}
-            />
-            <input type="hidden" value={formData.bukti_dukung || ""} />
-            <input type="hidden" value={formData.rhk || ""} />
-
-            <div className="row g-3 justify-content-center">
-              <div className="col-12">
-                <MonthSelector
-                  key={formData.user}
-                  id="bulan"
-                  options={bulanOptions}
-                  disabled={!formData.user}
-                  isLoading={isLoadingBulan}
-                  monthNumbers={monthNumbers}
-                  value={formData.bulan || ""}
-                  onChange={handleBulanChange}
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 text-center">
-              <button
-                type="submit"
-                className="btn btn-success btn-lg px-5"
-                disabled={!formData.user || !formData.bulan || isLoading}
-              >
-                <i className="fas fa-save me-2"></i>
-                {isLoading ? "Menyimpan..." : "Simpan Rencana Aksi"}
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {mappingError && (
-          <div className="alert alert-danger mt-3" role="alert">
-            <div className="d-flex align-items-center justify-content-between gap-3">
-              <span>{mappingError}</span>
-              <button
-                type="button"
-                className="btn btn-outline-light btn-sm"
-                onClick={() =>
-                  handleUserChangeRef.current({
-                    target: { value: formData.user },
-                  })
-                }
-              >
-                Coba lagi
-              </button>
-            </div>
-          </div>
-        )}
-
-        {message && (
-          <div
-            className={`alert ${message.type === "success" ? "alert-success" : "alert-danger"} mt-3 text-center`}
-            role="status"
-          >
-            <div>{message.text}</div>
-            {message.summary && (
-              <>
-                <div>
-                  Berhasil: {message.summary.successCount}/{message.summary.expected}
-                  {" "}(awal: {message.summary.initialSuccessCount}, retry: {message.summary.retrySuccessCount}).
-                </div>
-                <div>
-                  {message.summary.retryDetails.length
-                    ? `Retry: ${message.summary.retrySuccessCount} berhasil, ${message.summary.retryFailureCount} gagal.`
-                    : "Retry: tidak ada."}
-                </div>
-                {message.summary.retryDetails.length > 0 && (
-                  <ul className="mb-0 mt-2 text-start">
-                    {message.summary.retryDetails.map((retry, index) => (
-                      <li key={index}>
-                        ID {retry.id}, {retry.field}, percobaan {retry.attempt}:{" "}
-                        {retry.success ? "berhasil" : "gagal"}
-                        {retry.httpCode ? ` (HTTP ${retry.httpCode})` : ""}.
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+    <ActionPage
+      icon="fa-pen-to-square"
+      title="Isi Rencana Aksi"
+      subtitle="Pastikan rencana aksi telah ditambahkan sebelum mengisi."
+      steps={["Pengguna", "Bulan", "Proses"]}
+      hasUser={Boolean(formData.user)}
+      monthLabel={monthLabel}
+      canSubmit={Boolean(formData.user && formData.bulan)}
+      isSubmitting={isLoading}
+      onSubmit={handleSubmit}
+      action={{ label: "Simpan Rencana Aksi", busyLabel: "Menyimpan...", icon: "fa-floppy-disk", variant: "success" }}
+      confirm={{ title: "Simpan isian rencana aksi?", body: "Isian akan dikirim ke E-Kinerja untuk bulan terpilih." }}
+      mappingError={mappingError}
+      onRetry={() =>
+        handleUserChangeRef.current({ target: { value: formData.user } })
+      }
+      message={message}
+      monthSelector={
+        <MonthSelector
+          key={formData.user}
+          id="bulan"
+          options={bulanOptions}
+          disabled={!formData.user}
+          isLoading={isLoadingBulan}
+          monthNumbers={monthNumbers}
+          value={formData.bulan || ""}
+          onChange={handleBulanChange}
+        />
+      }
+    ></ActionPage>
   );
 };
+
 
 export default IsiComponent;

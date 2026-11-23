@@ -233,6 +233,7 @@ export function showMessage(message, type = "info", timeout = 3000) {
     transform: translateX(100%);
     transition: all 0.3s ease;
   `;
+  messageDiv.setAttribute("role", type === "danger" ? "alert" : "status");
   messageDiv.textContent = message;
 
   // Add to document

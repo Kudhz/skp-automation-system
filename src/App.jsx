@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import LoginComponent from "./components/Login";
 import TambahComponent from "./components/Tambah";
 import IsiComponent from "./components/SimpanRenaksi";
@@ -6,6 +6,9 @@ import AjukanComponent from "./components/Ajukan";
 import PreviewComponent from "./components/Preview";
 import WorkflowDashboard from "./components/WorkflowDashboard";
 import AccountSelector from "./components/AccountSelector";
+import ThemeToggle from "./components/ThemeToggle";
+import SessionTimer from "./components/SessionTimer";
+import { UiContext } from "./context/UiContext";
 import { dataUser, showMessage } from "./data/userData";
 import { API_CREDENTIALS, API_ENDPOINTS } from "./config/api";
 import { clearUserMappingCache } from "./services/mappingService";
@@ -35,6 +38,8 @@ const App = () => {
 
   // State untuk tab aktif dan loading
   const [activeTab, setActiveTab] = useState("dashboard");
+  const accountSectionRef = useRef(null);
+  const accountSearchRef = useRef(null);
   const [isLoading, setIsLoading] = useState(false);
   const [mappingRevision, setMappingRevision] = useState(0);
   const [message, setMessage] = useState(null);
@@ -341,14 +346,9 @@ const App = () => {
   // Show loading screen while checking session
   if (isCheckingAuth) {
     return (
-      <div
-        className="d-flex justify-content-center align-items-center"
-        style={{ minHeight: "100vh", background: "#1a1a1a" }}
-      >
-        <div className="text-center" style={{ color: "var(--theme-accent)" }}>
-          <div className="spinner-border mb-3" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
+      <div className="saas-boot-screen">
+        <div className="saas-boot-inner">
+          <span className="saas-spinner saas-spinner-lg" role="status" aria-label="Memeriksa sesi"></span>
           <p>Memeriksa sesi...</p>
         </div>
       </div>
@@ -360,17 +360,27 @@ const App = () => {
     return <LoginComponent onLogin={handleLogin} initialError={authError} />;
   }
 
-  const accountSelector = (
-    <AccountSelector
-      dataUser={dataUser}
-      selection={{ unit: formData.unit, category: formData.kategori, user: formData.user }}
-      onIdentityChange={handleIdentityChange}
-      state={accountSelectorState}
-      onStateChange={setAccountSelectorState}
-    />
-  );
+  const selection = {
+    unit: formData.unit,
+    category: formData.kategori,
+    user: formData.user,
+  };
+  const activeAccountName = Object.entries(
+    dataUser[selection.unit]?.[selection.category] || {},
+  ).find(([, account]) => account.username === selection.user)?.[0];
+  const activeAccount = activeAccountName
+    ? { name: activeAccountName, unit: selection.unit, category: selection.category }
+    : null;
+  const openAccountPanel = () => {
+    setAccountSelectorState((current) => ({ ...current, open: true }));
+    requestAnimationFrame(() => {
+      accountSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      accountSearchRef.current?.focus();
+    });
+  };
 
   return (
+    <UiContext.Provider value={{ activeAccount, openAccountPanel }}>
     <div className="automation-shell">
       {/* Fixed message container */}
       <div className="message-container" id="message-container"></div>
@@ -387,12 +397,49 @@ const App = () => {
         </div>
 
         <nav className="automation-navigation" aria-label="Rencana Aksi">
-          <div className="automation-nav-label">MENU UTAMA</div>
+          <div className="automation-nav-label">RINGKASAN</div>
           {[
             { id: "dashboard", label: "Ringkasan Progres", mobileLabel: "Progres", icon: "fa-chart-pie" },
-            { id: "tambah", label: "Tambah Renaksi", mobileLabel: "Tambah", icon: "fa-circle-plus" },
-            { id: "isi", label: "Isi Rencana Aksi", mobileLabel: "Isi", icon: "fa-pen-to-square" },
-            { id: "ajukan", label: "Kirim Renaksi", mobileLabel: "Kirim", icon: "fa-paper-plane" },
+          ].map((item) => (
+            <button
+              className={`automation-nav-link ${activeTab === item.id ? "active" : ""}`}
+              type="button"
+              key={item.id}
+              aria-label={item.label}
+              aria-current={activeTab === item.id ? "page" : undefined}
+              data-mobile-label={item.mobileLabel}
+              title={item.label}
+              onClick={() => handleTabChange(item.id)}
+            >
+              <i className={`fas ${item.icon}`} aria-hidden="true"></i>
+              <span data-mobile-label={item.mobileLabel}>{item.label}</span>
+            </button>
+          ))}
+
+          <div className="automation-nav-label">ALUR RENCANA AKSI</div>
+          {[
+            { id: "tambah", label: "Tambah Renaksi", mobileLabel: "Tambah", icon: "fa-circle-plus", step: "1" },
+            { id: "isi", label: "Isi Rencana Aksi", mobileLabel: "Isi", icon: "fa-pen-to-square", step: "2" },
+            { id: "ajukan", label: "Kirim Renaksi", mobileLabel: "Kirim", icon: "fa-paper-plane", step: "3" },
+          ].map((item) => (
+            <button
+              className={`automation-nav-link ${activeTab === item.id ? "active" : ""}`}
+              type="button"
+              key={item.id}
+              aria-label={item.label}
+              aria-current={activeTab === item.id ? "page" : undefined}
+              data-mobile-label={item.mobileLabel}
+              title={item.label}
+              onClick={() => handleTabChange(item.id)}
+            >
+              <i className={`fas ${item.icon}`} aria-hidden="true"></i>
+              <span data-mobile-label={item.mobileLabel}>{item.label}</span>
+              <em className="nav-step-badge">{item.step}</em>
+            </button>
+          ))}
+
+          <div className="automation-nav-label">LAINNYA</div>
+          {[
             { id: "preview", label: "Preview Renaksi", mobileLabel: "Preview", icon: "fa-eye" },
           ].map((item) => (
             <button
@@ -413,20 +460,6 @@ const App = () => {
 
         <div className="automation-sidebar-bottom">
           <button
-            className="automation-sidebar-action"
-            type="button"
-            aria-label="Lihat sisa sesi"
-            data-mobile-label="Sesi"
-            onClick={() => {
-              const remaining = getRemainingTime();
-              alert(`Sesi berakhir dalam: ${remaining}`);
-            }}
-            title="Lihat sisa sesi"
-          >
-            <i className="fas fa-clock" aria-hidden="true"></i>
-            <span data-mobile-label="Sesi">Sesi</span>
-          </button>
-          <button
             className="automation-sidebar-action logout"
             type="button"
             aria-label="Logout"
@@ -443,28 +476,32 @@ const App = () => {
       <main className="automation-main">
         <header className="automation-topbar">
           <div>
-            <div className="automation-breadcrumb">E-KINERJA <span>/</span> RENCANA AKSI</div>
+            <div className="automation-breadcrumb">E-KINERJA / RENCANA AKSI</div>
             <h1>{activeTabTitle}</h1>
           </div>
-          <div className="automation-status">
-            <span className="automation-status-dot"></span>
-            <span>Sistem aktif</span>
+          <div className="automation-topbar-actions">
+            <SessionTimer />
+            <ThemeToggle />
           </div>
         </header>
 
         <section className="automation-content">
+          <AccountSelector
+            dataUser={dataUser}
+            selection={selection}
+            onIdentityChange={handleIdentityChange}
+            state={accountSelectorState}
+            onStateChange={setAccountSelectorState}
+            sectionRef={accountSectionRef}
+            searchInputRef={accountSearchRef}
+          />
           <div id="main-content">
             <div hidden={activeTab !== "dashboard"}>
               <WorkflowDashboard
                 dataUser={dataUser}
-                selection={{
-                  unit: formData.unit,
-                  category: formData.kategori,
-                  user: formData.user,
-                }}
+                selection={selection}
                 mappingRevision={mappingRevision}
                 onNavigate={handleTabChange}
-                accountSelector={activeTab === "dashboard" ? accountSelector : null}
               />
             </div>
 
@@ -478,7 +515,6 @@ const App = () => {
                 message={message}
                 onIdentityChange={handleIdentityChange}
                 mappingRevision={mappingRevision}
-                accountSelector={activeTab === "tambah" ? accountSelector : null}
               />
             </div>
 
@@ -492,7 +528,6 @@ const App = () => {
                 message={message}
                 onIdentityChange={handleIdentityChange}
                 mappingRevision={mappingRevision}
-                accountSelector={activeTab === "isi" ? accountSelector : null}
               />
             </div>
 
@@ -506,7 +541,6 @@ const App = () => {
                 message={message}
                 onIdentityChange={handleIdentityChange}
                 mappingRevision={mappingRevision}
-                accountSelector={activeTab === "ajukan" ? accountSelector : null}
               />
             </div>
 
@@ -517,7 +551,6 @@ const App = () => {
                 setFormData={setFormData}
                 onIdentityChange={handleIdentityChange}
                 mappingRevision={mappingRevision}
-                accountSelector={activeTab === "preview" ? accountSelector : null}
               />
             </div>
           </div>
@@ -529,31 +562,8 @@ const App = () => {
         </footer>
       </main>
     </div>
+    </UiContext.Provider>
   );
-
-  // Helper function to get remaining time
-  function getRemainingTime() {
-    try {
-      const loginTime = localStorage.getItem("bot_login_time");
-      const sessionDuration = localStorage.getItem("bot_session_duration");
-
-      if (loginTime && sessionDuration) {
-        const currentTime = new Date().getTime();
-        const loginTimestamp = parseInt(loginTime);
-        const duration = parseInt(sessionDuration) * 60 * 1000;
-        const remainingMs = loginTimestamp + duration - currentTime;
-
-        if (remainingMs > 0) {
-          const remainingMinutes = Math.floor(remainingMs / 60000);
-          const remainingSeconds = Math.floor((remainingMs % 60000) / 1000);
-          return `${remainingMinutes}m ${remainingSeconds}s`;
-        }
-      }
-      return "Expired";
-    } catch {
-      return "Error";
-    }
-  }
 };
 
 export default App;

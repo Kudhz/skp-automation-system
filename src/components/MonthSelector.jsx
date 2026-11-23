@@ -34,39 +34,57 @@ export default function MonthSelector({
         aria-pressed={isSelected}
         onClick={() => onChange(String(option.value))}
       >
-        <strong>{monthLabel}</strong>
-        {status && <span>{status}</span>}
-        {isSelected && <i className="fas fa-check" aria-label="Terpilih"></i>}
+        <span className="month-option-top">
+          <strong>{monthLabel}</strong>
+          {isSelected ? (
+            <i className="fas fa-circle-check" aria-label="Terpilih"></i>
+          ) : !unavailable ? (
+            <span className="month-dot" aria-hidden="true"></span>
+          ) : null}
+        </span>
+        {status && <span className="month-option-status">{status}</span>}
       </button>
     );
   };
 
   return (
     <section id={id} className="month-selector" aria-label="Pilih bulan" aria-busy={isLoading}>
-      <div className="account-selector-heading">
+      <div className="month-header">
         <div>
-          <strong>Bulan</strong>
-          <p>
+          <div className="month-title">
+            <i className="fas fa-calendar-days" aria-hidden="true"></i>
+            <span>Pilih Bulan</span>
+          </div>
+          <p className="month-subtitle">
             {isLoading
-              ? "Memuat data pengguna..."
+              ? "Memuat data bulan dari E-Kinerja..."
               : disabled
-                ? "Pilih pengguna terlebih dahulu."
-                : selected?.label || "Pilih bulan untuk melanjutkan."}
+                ? "Pilih pegawai terlebih dahulu."
+                : selected?.label || "Klik salah satu bulan yang tersedia di bawah ini."}
           </p>
         </div>
         {isLoading && (
-          <span className="workflow-loading" role="status">
-            <span className="spinner-border spinner-border-sm" aria-hidden="true"></span>
-            Memuat
+          <span className="saas-loading-pill" role="status">
+            <span className="saas-spinner" aria-hidden="true"></span>
+            <span>Memuat</span>
           </span>
         )}
       </div>
+
       {otherOptions.map((option, index) =>
         option.value === "" ? (
-          <p key={index} className="month-option-message" role="status">{option.label}</p>
+          <div key={index} className="saas-alert saas-alert-neutral" role="status">
+            <i className="fas fa-circle-info" aria-hidden="true"></i>
+            <span>{option.label}</span>
+          </div>
         ) : null,
       )}
+
       <div className="month-grid">
+        {isLoading &&
+          Array.from({ length: 6 }, (_, index) => (
+            <div className="skeleton skeleton-month" key={`sk-${index}`} aria-hidden="true"></div>
+          ))}
         {visibleMonths.map((month) =>
           month.options.length > 0 ? (
             <div className="month-option-group" key={month.label}>
@@ -76,8 +94,10 @@ export default function MonthSelector({
             </div>
           ) : (
             <button type="button" className="month-option" key={month.label} disabled>
-              <strong>{month.label}</strong>
-              {!isLoading && <span>Tidak tersedia</span>}
+              <span className="month-option-top">
+                <strong>{month.label}</strong>
+              </span>
+              {!isLoading && <span className="month-option-status">Tidak tersedia</span>}
             </button>
           ),
         )}

@@ -1,3 +1,4 @@
+import ActionPage from "./ActionPage";
 import React, { useEffect, useRef, useState } from "react";
 import { fetchUserMapping } from "../services/mappingService";
 import MonthSelector from "./MonthSelector";
@@ -12,7 +13,6 @@ const AjukanComponent = ({
   message,
   onIdentityChange,
   mappingRevision,
-  accountSelector,
 }) => {
   console.log("🎯 [AJUKAN] Component rendered");
   const [bulanOptions, setBulanOptions] = useState([]);
@@ -369,81 +369,43 @@ const AjukanComponent = ({
     }
   };
 
+  const monthLabel = formData.bulan_a
+    ? (bulanOptions.find((option) => String(option.value) === String(formData.bulan_a))?.label || "").split(" - ")[0]
+    : "";
+
   return (
-    <div id="form-ajukan" style={{ width: "100%" }}>
-      <div style={{ width: "100%", margin: "0 auto" }}>
-        <div className="form-page-heading">
-          <h2>
-            <strong>Kirim Rencana Aksi</strong>
-          </h2>
-          <p>
-            Hanya menampilkan rencana aksi yang sudah diisi lengkap
-          </p>
-        </div>
-
-        {accountSelector}
-
-        <div className="mb-4">
-          <form onSubmit={handleSubmit} autoComplete="off">
-            <input type="hidden" value={formData.id_skp_a || ""} />
-
-            <div className="row g-3 justify-content-center">
-              <div className="col-12">
-                <MonthSelector
-                  key={formData.user_a}
-                  id="bulan_a"
-                  options={bulanOptions}
-                  disabled={!formData.user_a}
-                  isLoading={isLoadingBulan}
-                  monthNumbers={monthNumbers}
-                  value={formData.bulan_a || ""}
-                  onChange={handleBulanChange}
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 text-center">
-              <button
-                type="submit"
-                className="btn btn-success btn-lg px-5"
-                disabled={!formData.user_a || !formData.bulan_a || isLoading}
-              >
-                <i className="fas fa-paper-plane me-2"></i>
-                {isLoading ? "Mengirim..." : "Kirim Rencana Aksi"}
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {mappingError && (
-          <div className="alert alert-danger mt-3" role="alert">
-            <div className="d-flex align-items-center justify-content-between gap-3">
-              <span>{mappingError}</span>
-              <button
-                type="button"
-                className="btn btn-outline-light btn-sm"
-                onClick={() =>
-                  handleUserChangeRef.current({
-                    target: { value: formData.user_a },
-                  })
-                }
-              >
-                Coba lagi
-              </button>
-            </div>
-          </div>
-        )}
-
-        {message && (
-          <div
-            className={`alert ${message.type === "success" ? "alert-success" : "alert-danger"} mt-3 text-center`}
-          >
-            {message.text}
-          </div>
-        )}
-      </div>
-    </div>
+    <ActionPage
+      icon="fa-paper-plane"
+      title="Kirim Rencana Aksi"
+      subtitle="Hanya menampilkan rencana aksi yang sudah diisi lengkap."
+      steps={["Pengguna", "Bulan", "Proses"]}
+      hasUser={Boolean(formData.user_a)}
+      monthLabel={monthLabel}
+      canSubmit={Boolean(formData.user_a && formData.bulan_a)}
+      isSubmitting={isLoading}
+      onSubmit={handleSubmit}
+      action={{ label: "Kirim Rencana Aksi", busyLabel: "Mengirim...", icon: "fa-paper-plane", variant: "success" }}
+      confirm={{ title: "Kirim rencana aksi?", body: "Rencana aksi akan diajukan dan tidak dapat diubah selama menunggu penilaian." }}
+      mappingError={mappingError}
+      onRetry={() =>
+        handleUserChangeRef.current({ target: { value: formData.user_a } })
+      }
+      message={message}
+      monthSelector={
+        <MonthSelector
+          key={formData.user_a}
+          id="bulan_a"
+          options={bulanOptions}
+          disabled={!formData.user_a}
+          isLoading={isLoadingBulan}
+          monthNumbers={monthNumbers}
+          value={formData.bulan_a || ""}
+          onChange={handleBulanChange}
+        />
+      }
+    ></ActionPage>
   );
 };
+
 
 export default AjukanComponent;

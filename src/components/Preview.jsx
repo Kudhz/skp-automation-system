@@ -1,3 +1,4 @@
+import ActionPage from "./ActionPage";
 import React, { useEffect, useRef, useState } from "react";
 import { fetchUserMapping } from "../services/mappingService";
 import MonthSelector from "./MonthSelector";
@@ -9,7 +10,6 @@ const PreviewComponent = ({
   setFormData,
   onIdentityChange,
   mappingRevision,
-  accountSelector,
 }) => {
   const [bulanOptions, setBulanOptions] = useState([]);
   const [monthNumbers, setMonthNumbers] = useState(null);
@@ -682,220 +682,189 @@ const PreviewComponent = ({
     }
   };
 
+  const monthLabel = formData.bulan_p
+    ? (bulanOptions.find((option) => String(option.value) === String(formData.bulan_p))?.label || "").split(" - ")[0]
+    : "";
+
   return (
-    <div id="preview-renaksi" style={{ width: "100%" }}>
-      <div style={{ width: "100%", margin: "0 auto" }}>
-        <div className="form-page-heading">
-          <h2>
-            <strong>Preview Isi Renaksi</strong>
-          </h2>
-          <p>
-            Lihat detail rencana aksi yang sudah diisi berdasarkan bulan
-          </p>
+    <ActionPage
+      icon="fa-eye"
+      title="Preview Isi Renaksi"
+      subtitle="Lihat detail rencana aksi yang sudah diisi berdasarkan bulan."
+      steps={["Pengguna", "Bulan", "Proses"]}
+      hasUser={Boolean(formData.user_p)}
+      monthLabel={monthLabel}
+      canSubmit={Boolean(formData.user_p && formData.bulan_p)}
+      isSubmitting={isLoadingPreview}
+      onSubmit={handleShowPreview}
+      action={{ label: "Tampilkan Preview", busyLabel: "Memuat preview...", icon: "fa-eye", variant: "primary" }}
+      confirm={null}
+      mappingError={mappingError}
+      onRetry={() =>
+        handleUserChangeRef.current({ target: { value: formData.user_p } })
+      }
+      message={null}
+      monthSelector={
+        <MonthSelector
+          key={formData.user_p}
+          id="bulan_p"
+          options={bulanOptions}
+          disabled={!formData.user_p}
+          isLoading={isLoadingBulan}
+          monthNumbers={monthNumbers}
+          value={formData.bulan_p || ""}
+          onChange={handleBulanChange}
+        />
+      }
+    >
+      {previewError && (
+        <div className="saas-alert saas-alert-danger" role="alert">
+          <div className="saas-alert-content">
+            <i className="fas fa-triangle-exclamation" aria-hidden="true"></i>
+            <span>{previewError}</span>
+          </div>
         </div>
+      )}
 
-        {accountSelector}
-
-        <div className="mb-4">
-          <form autoComplete="off">
-            <div className="row g-3 justify-content-center">
-              <div className="col-12">
-                <MonthSelector
-                  key={formData.user_p}
-                  id="bulan_p"
-                  options={bulanOptions}
-                  disabled={!formData.user_p}
-                  isLoading={isLoadingBulan}
-                  monthNumbers={monthNumbers}
-                  value={formData.bulan_p || ""}
-                  onChange={handleBulanChange}
-                />
-              </div>
+      {showPreview && previewData && (
+        <section className="preview-result" aria-labelledby="preview-result-title">
+          <header className="preview-result-header">
+            <div>
+              <span className="preview-result-eyebrow">HASIL PREVIEW</span>
+              <h3 id="preview-result-title">Rencana Aksi</h3>
+              <p>{previewData.bulanLabel || "Bulan tidak tersedia"} · {previewData.previewData.length} indikator</p>
             </div>
+            <button
+              type="button"
+              className="preview-close"
+              aria-label="Tutup hasil preview"
+              onClick={() => setShowPreview(false)}
+            >
+              <i className="fas fa-times" aria-hidden="true"></i>
+            </button>
+          </header>
+          <div id="preview-content" className="preview-result-body">
+            {previewData.error ? (
+              <div className="saas-alert saas-alert-warning saas-alert-block" role="alert">
+                <i className="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                <div className="saas-alert-details">
+                  <strong>Tidak ada data</strong>
+                  <p>{previewData.error}</p>
+                </div>
+              </div>
+            ) : previewData.previewData.length > 0 ? (
+              <>
+                <div className="preview-summary" aria-label="Ringkasan preview">
+                  <div className="preview-summary-item">
+                    <span>Status bulan</span>
+                    <strong><i className={previewData.monthStatusIcon} aria-hidden="true"></i>{previewData.monthStatus}</strong>
+                  </div>
+                  <div className="preview-summary-item">
+                    <span>Sudah diisi</span>
+                    <strong>{previewData.itemsWithRealisasi} / {previewData.previewData.length}</strong>
+                  </div>
+                  <div className="preview-summary-item">
+                    <span>Ada rencana aksi</span>
+                    <strong>{previewData.itemsWithRenaksi} / {previewData.previewData.length}</strong>
+                  </div>
+                </div>
 
-            <div className="mt-4 text-center">
-              <button
-                type="button"
-                className="btn btn-success btn-lg px-5"
-                disabled={
-                  !formData.user_p || !formData.bulan_p || isLoadingPreview
-                }
-                onClick={handleShowPreview}
-              >
-                {isLoadingPreview ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2"></span>
-                    Memuat Preview...
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-eye me-2"></i>
-                    Tampilkan Preview
-                  </>
+                {previewData.comparison && (
+                  <section className="preview-comparison" aria-label="Perbandingan bulan sebelumnya">
+                    <div>
+                      <strong>Perbandingan bulan sebelumnya</strong>
+                      <p>{previewData.comparison.hasReference
+                        ? `Acuan: ${previewData.comparison.monthLabel} ${previewData.comparison.year}. Berdasarkan teks rencana aksi indikator yang ditampilkan.`
+                        : "Bulan yang dipilih tidak memiliki bulan acuan sebelumnya dalam periode SKP."}</p>
+                    </div>
+                    <div className="preview-comparison-counts">
+                      <span className="preview-comparison-badge same">Sama: {previewData.comparison.results.filter((result) => result === "same").length}</span>
+                      <span className="preview-comparison-badge different">Berbeda: {previewData.comparison.results.filter((result) => result === "different").length}</span>
+                      <span className="preview-comparison-badge unavailable">Belum dapat dibandingkan: {previewData.comparison.results.filter((result) => result === "unavailable").length}</span>
+                    </div>
+                  </section>
                 )}
-              </button>
-            </div>
-          </form>
-        </div>
 
-        {mappingError && (
-          <div className="alert alert-danger mt-3" role="alert">
-            <div className="d-flex align-items-center justify-content-between gap-3">
-              <span>{mappingError}</span>
-              <button
-                type="button"
-                className="btn btn-outline-light btn-sm"
-                onClick={() =>
-                  handleUserChangeRef.current({
-                    target: { value: formData.user_p },
-                  })
-                }
-              >
-                Coba lagi
-              </button>
-            </div>
-          </div>
-        )}
+                <div className="preview-detail-heading">
+                  <h4>Detail Indikator</h4>
+                  <span>{previewData.previewData.length} indikator</span>
+                </div>
+                <div className="table-responsive preview-table-wrap">
+                  <table className="preview-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">No</th>
+                        <th scope="col">Indikator Kinerja</th>
+                        <th scope="col">Rencana Aksi</th>
+                        <th scope="col">Bulan Sebelumnya</th>
+                        <th scope="col">Realisasi</th>
+                        <th scope="col">Bukti Dukung</th>
+                        <th scope="col">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewData.previewData.map((item, index) => {
+                        const realisasi = item.realisasi || 0;
+                        const renaksi = item.renaksi || "Belum diisi";
+                        const indikator = item.indikator_kinerja || "N/A";
+                        const buktiDukung = item.bukti_dukung || "Belum ada";
+                        const comparison = previewData.comparison?.results[index] || "unavailable";
+                        const comparisonLabel = {
+                          same: "Sama",
+                          different: "Berbeda",
+                          unavailable: "Belum dapat dibandingkan",
+                        }[comparison];
 
-        {previewError && (
-          <div className="alert alert-danger mt-3" role="alert">
-            {previewError}
-          </div>
-        )}
+                        let statusClass = "empty";
+                        let statusIcon = "fa-clock";
+                        let statusText = "Belum ada";
+                        if ((parseFloat(realisasi) || 0) > 0) {
+                          statusClass = "filled";
+                          statusIcon = "fa-check";
+                          statusText = "Sudah diisi";
+                        } else if (renaksi && renaksi !== "Belum diisi") {
+                          statusClass = "plan";
+                          statusIcon = "fa-file-lines";
+                          statusText = "Renaksi ada";
+                        }
 
-        {showPreview && previewData && (
-          <section className="preview-result mt-4" aria-labelledby="preview-result-title">
-            <header className="preview-result-header">
-              <div>
-                <span className="preview-result-eyebrow">HASIL PREVIEW</span>
-                <h3 id="preview-result-title">Rencana Aksi</h3>
-                <p>{previewData.bulanLabel || "Bulan tidak tersedia"} · {previewData.previewData.length} indikator</p>
+                        return (
+                          <tr key={index}>
+                            <td data-label="Nomor" className="preview-row-number">{index + 1}</td>
+                            <td data-label="Indikator Kinerja"><div className="text-content preview-indicator">{indikator}</div></td>
+                            <td data-label="Rencana Aksi"><div className="text-content">{renaksi}</div></td>
+                            <td data-label="Perbandingan Bulan Sebelumnya" className="preview-row-comparison">
+                              <span className={`preview-comparison-badge ${comparison}`}>{comparisonLabel}</span>
+                            </td>
+                            <td data-label="Realisasi">{realisasi}</td>
+                            <td data-label="Bukti Dukung"><div className="text-content">{buktiDukung}</div></td>
+                            <td data-label="Status" className="preview-row-status">
+                              <span className={`preview-status ${statusClass}`} role="img" aria-label={statusText} title={statusText}>
+                                <i className={`fas ${statusIcon}`} aria-hidden="true"></i>
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="saas-alert saas-alert-warning saas-alert-block" role="alert">
+                <i className="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                <div className="saas-alert-details">
+                  <strong>Tidak ada data</strong>
+                  <p>Tidak ditemukan data untuk bulan yang dipilih.</p>
+                </div>
               </div>
-              <button
-                type="button"
-                className="preview-close"
-                aria-label="Tutup hasil preview"
-                onClick={() => setShowPreview(false)}
-              >
-                <i className="fas fa-times" aria-hidden="true"></i>
-              </button>
-            </header>
-            <div id="preview-content" className="preview-result-body">
-              {previewData.error ? (
-                <div className="alert alert-warning mb-0" role="alert">
-                  <strong>Tidak ada data</strong>
-                  <p className="mb-0">{previewData.error}</p>
-                </div>
-              ) : previewData.previewData.length > 0 ? (
-                <>
-                  <div className="preview-summary" aria-label="Ringkasan preview">
-                    <div className="preview-summary-item">
-                      <span>Status bulan</span>
-                      <strong><i className={`${previewData.monthStatusIcon} me-2`} aria-hidden="true"></i>{previewData.monthStatus}</strong>
-                    </div>
-                    <div className="preview-summary-item">
-                      <span>Sudah diisi</span>
-                      <strong>{previewData.itemsWithRealisasi} / {previewData.previewData.length}</strong>
-                    </div>
-                    <div className="preview-summary-item">
-                      <span>Ada rencana aksi</span>
-                      <strong>{previewData.itemsWithRenaksi} / {previewData.previewData.length}</strong>
-                    </div>
-                  </div>
-
-                  {previewData.comparison && (
-                    <section className="preview-comparison" aria-label="Perbandingan bulan sebelumnya">
-                      <div>
-                        <strong>Perbandingan bulan sebelumnya</strong>
-                        <p>{previewData.comparison.hasReference
-                          ? `Acuan: ${previewData.comparison.monthLabel} ${previewData.comparison.year}. Berdasarkan teks rencana aksi indikator yang ditampilkan.`
-                          : "Bulan yang dipilih tidak memiliki bulan acuan sebelumnya dalam periode SKP."}</p>
-                      </div>
-                      <div className="preview-comparison-counts">
-                        <span className="preview-comparison-badge same">Sama: {previewData.comparison.results.filter((result) => result === "same").length}</span>
-                        <span className="preview-comparison-badge different">Berbeda: {previewData.comparison.results.filter((result) => result === "different").length}</span>
-                        <span className="preview-comparison-badge unavailable">Belum dapat dibandingkan: {previewData.comparison.results.filter((result) => result === "unavailable").length}</span>
-                      </div>
-                    </section>
-                  )}
-
-                  <div className="preview-detail-heading">
-                    <h4>Detail Indikator</h4>
-                    <span>{previewData.previewData.length} indikator</span>
-                  </div>
-                  <div className="table-responsive preview-table-wrap">
-                    <table className="table preview-table mb-0">
-                      <thead>
-                        <tr>
-                          <th scope="col">No</th>
-                          <th scope="col">Indikator Kinerja</th>
-                          <th scope="col">Rencana Aksi</th>
-                          <th scope="col">Bulan Sebelumnya</th>
-                          <th scope="col">Realisasi</th>
-                          <th scope="col">Bukti Dukung</th>
-                          <th scope="col">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {previewData.previewData.map((item, index) => {
-                          const realisasi = item.realisasi || 0;
-                          const renaksi = item.renaksi || "Belum diisi";
-                          const indikator = item.indikator_kinerja || "N/A";
-                          const buktiDukung = item.bukti_dukung || "Belum ada";
-                          const comparison = previewData.comparison?.results[index] || "unavailable";
-                          const comparisonLabel = {
-                            same: "Sama",
-                            different: "Berbeda",
-                            unavailable: "Belum dapat dibandingkan",
-                          }[comparison];
-
-                          let statusClass = "empty";
-                          let statusIcon = "fa-clock";
-                          let statusText = "Belum ada";
-                          if ((parseFloat(realisasi) || 0) > 0) {
-                            statusClass = "filled";
-                            statusIcon = "fa-check";
-                            statusText = "Sudah diisi";
-                          } else if (renaksi && renaksi !== "Belum diisi") {
-                            statusClass = "plan";
-                            statusIcon = "fa-file-lines";
-                            statusText = "Renaksi ada";
-                          }
-
-                          return (
-                            <tr key={index}>
-                              <td data-label="Nomor" className="preview-row-number">{index + 1}</td>
-                              <td data-label="Indikator Kinerja"><div className="text-content preview-indicator">{indikator}</div></td>
-                              <td data-label="Rencana Aksi"><div className="text-content">{renaksi}</div></td>
-                              <td data-label="Perbandingan Bulan Sebelumnya" className="preview-row-comparison">
-                                <span className={`preview-comparison-badge ${comparison}`}>{comparisonLabel}</span>
-                              </td>
-                              <td data-label="Realisasi">{realisasi}</td>
-                              <td data-label="Bukti Dukung"><div className="text-content">{buktiDukung}</div></td>
-                              <td data-label="Status" className="preview-row-status">
-                                <span className={`preview-status ${statusClass}`} role="img" aria-label={statusText} title={statusText}>
-                                  <i className={`fas ${statusIcon}`} aria-hidden="true"></i>
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              ) : (
-                <div className="alert alert-warning mb-0" role="alert">
-                  <strong>Tidak ada data</strong>
-                  <p className="mb-0">Tidak ditemukan data untuk bulan yang dipilih.</p>
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-      </div>
-    </div>
+            )}
+          </div>
+        </section>
+      )}
+    </ActionPage>
   );
 };
+
 
 export default PreviewComponent;
